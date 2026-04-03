@@ -381,6 +381,22 @@
   gap: 0.72rem;
 }
 
+.landing-bot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.landing-bot-rank {
+  margin-left: auto;
+  font-family: 'Chakra Petch', 'Trebuchet MS', sans-serif;
+  font-size: 1.55rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #5cefff;
+}
+
 .agent-avatar {
   display: inline-flex;
   align-items: center;

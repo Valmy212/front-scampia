@@ -430,10 +430,12 @@ function LandingPage() {
             <div className="top5-grid">
               {topBots.map((bot) => (
                 <article key={bot.rank} className="bot-card">
-                  <p className="bot-rank">#{bot.rank}</p>
-                  <div className="bot-identity">
-                    <span className="agent-avatar" aria-hidden="true">{bot.avatar}</span>
-                    <h3>{bot.name}</h3>
+                  <div className="landing-bot-head">
+                    <div className="bot-identity">
+                      <span className="agent-avatar" aria-hidden="true">{bot.avatar}</span>
+                      <h3>{bot.name}</h3>
+                    </div>
+                    <p className="bot-rank landing-bot-rank">#{bot.rank}</p>
                   </div>
                   <div className="bot-stats-list">
                     <p>
