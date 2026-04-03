@@ -531,7 +531,8 @@ function LeaderboardPage() {
 
       <section className="section-block" aria-labelledby="filters-title">
         <h2 id="filters-title">Filtres / tri</h2>
-        <div className="filter-row" role="radiogroup" aria-label="Timeframe">
+        <div className="filter-line filter-line-single" aria-label="Leaderboard filters">
+          <span className="filter-group-label">Period</span>
           {TIMEFRAME_OPTIONS.map((option) => (
             <button
               key={option.key}
@@ -542,8 +543,7 @@ function LeaderboardPage() {
               {option.label}
             </button>
           ))}
-        </div>
-        <div className="filter-row" role="radiogroup" aria-label="Sort metric">
+          <span className="filter-group-label">Sort</span>
           {SORT_OPTIONS.map((option) => (
             <button
               key={option.key}

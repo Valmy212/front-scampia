@@ -439,9 +439,37 @@
 
 .filter-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.6rem;
+  margin-top: 0;
+}
+
+.filter-line {
   margin-top: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+}
+
+.filter-line-single {
+  flex-wrap: nowrap;
+}
+
+.filter-group-label {
+  font-family: 'Chakra Petch', 'Trebuchet MS', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82rem;
+  color: rgba(244, 251, 255, 0.62);
+  white-space: nowrap;
+}
+
+.filter-separator {
+  color: rgba(244, 251, 255, 0.35);
+  font-weight: 700;
+  flex: 0 0 auto;
 }
 
 .filter-pill {
