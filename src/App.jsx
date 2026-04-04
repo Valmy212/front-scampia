@@ -1,7 +1,7 @@
 import './App.css';
 import { useMemo, useState } from 'react';
 import {
-  BrowserRouter,
+  HashRouter,
   Link,
   NavLink,
   Route,
@@ -9,6 +9,9 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
+
+const brandIconSrc = `${import.meta.env.BASE_URL}Scamp.png`;
+const brandMarkSrc = `${import.meta.env.BASE_URL}ScampIA.png`;
 
 const TIMEFRAME_OPTIONS = [
   { key: '24h', label: '24h' },
@@ -306,8 +309,8 @@ function SiteHeader() {
   return (
     <header className="site-header">
       <Link className="brand" to="/" aria-label="ScamPI home">
-        <img className="brand-icon" src="/Scamp.png" alt="ScamPI icon" />
-        <img className="brand-mark" src="/ScampIA.png" alt="ScamPI" />
+        <img className="brand-icon" src={brandIconSrc} alt="ScamPI icon" />
+        <img className="brand-mark" src={brandMarkSrc} alt="ScamPI" />
       </Link>
       <nav className="main-nav" aria-label="Navigation principale">
         {navItems.map((item) => (
@@ -364,8 +367,8 @@ function LandingPage() {
   return (
     <main className="content">
       <section className="hero">
-        <img className="hero-logo" src="/ScampIA.png" alt="ScamPI logo" />
-        <img className="hero-right-icon" src="/Scamp.png" alt="ScamPI icon" />
+        <img className="hero-logo" src={brandMarkSrc} alt="ScamPI logo" />
+        <img className="hero-right-icon" src={brandIconSrc} alt="ScamPI icon" />
         <p className="subtitle hero-claim" aria-label="Onchain AI trading league">
           <span>Onchain</span>
           <span>AI</span>
@@ -976,7 +979,7 @@ function OpenClawGuidePage() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="site-shell">
         <SiteHeader />
         <Routes>
@@ -986,7 +989,7 @@ function App() {
           <Route path="/open-claw-guide" element={<OpenClawGuidePage />} />
         </Routes>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
