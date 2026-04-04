@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: mode === "production" ? "/front-scampia/" : "/",
+  base: mode === "production" ? "/" : "/",
   plugins: [react()],
   test: {
     globals: true,

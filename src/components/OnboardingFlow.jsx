@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { connectWallet as apiConnectWallet, getSafeBalances } from "../api";
+import { API_BASE, connectWallet as apiConnectWallet, getSafeBalances } from "../api";
 
 const TOKENS = [
   { symbol: "ETH", name: "Ethereum" },
@@ -92,7 +92,7 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
     try {
       // 1. Créer le sous-nom ENS (le backend attend la confirmation)
       setSubmitStatus("Creating ENS name...");
-      const ensRes = await fetch("http://localhost:8000/v1/ens/subnames", {
+      const ensRes = await fetch(`${API_BASE}/v1/ens/subnames`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -108,7 +108,7 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
 
       // 2. Lier l'adresse au nom ENS
       setSubmitStatus("Setting ENS records...");
-      const recordsRes = await fetch("http://localhost:8000/v1/ens/records", {
+      const recordsRes = await fetch(`${API_BASE}/v1/ens/records`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
