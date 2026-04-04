@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { API_BASE, connectWallet as apiConnectWallet, getSafeBalances } from "../api";
 
@@ -31,6 +31,7 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
   const [user, setUser] = useState(null);
   const [balances, setBalances] = useState(null);
   const [safeStatus, setSafeStatus] = useState("");
+  const deployingRef = useRef(false);
 
   const [ensLabel, setEnsLabel] = useState("");
   const [stopLoss, setStopLoss] = useState("50");
@@ -50,7 +51,8 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
   }, [address, step]);
 
   useEffect(() => {
-    if (step !== 2 || !address) return;
+    if (step !== 2 || !address || deployingRef.current) return;
+    deployingRef.current = true;
 
     setSafeStatus("Création du Safe...");
     apiConnectWallet(address)
@@ -62,7 +64,10 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
           setTimeout(() => setStep(3), 1200);
         });
       })
-      .catch((err) => setSafeStatus("Erreur: " + err.message));
+      .catch((err) => {
+        setSafeStatus("Erreur: " + err.message);
+        deployingRef.current = false;
+      });
   }, [step, address]);
 
   const toggleToken = (symbol) => {
@@ -71,6 +76,12 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
         ? prev.filter((s) => s !== symbol)
         : [...prev, symbol]
     );
+  };
+
+  const handleRetry = () => {
+    deployingRef.current = false;
+    setSafeStatus("");
+    setStep(2);
   };
 
   const handleSubmitConfig = async () => {
@@ -203,11 +214,11 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
             <div className="ob-loading">
               <div className="ob-spinner" />
               <p>{safeStatus}</p>
-                {safeStatus.startsWith("Erreur") && (
-                <button className="ob-btn-primary" onClick={() => { setStep(2); setSafeStatus(""); }}>
-                    Réessayer
+              {safeStatus.startsWith("Erreur") && (
+                <button className="ob-btn-primary" onClick={handleRetry}>
+                  Réessayer
                 </button>
-                )}
+              )}
             </div>
           </div>
         )}

@@ -125,6 +125,7 @@
 .wp-dd-actions {
   display: flex;
   gap: 8px;
+  margin-bottom: 8px;
 }
 
 .wp-dd-btn {
@@ -147,18 +148,32 @@
   filter: brightness(1.1);
 }
 
-.wp-dd-btn-ghost {
+.wp-dd-btn-withdraw {
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.wp-dd-btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   color: #fff;
 }
 
-/* ── Deposit Modal ── */
+.wp-dd-btn-withdraw:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.wp-dd-disconnect {
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.wp-dd-disconnect:hover {
+  color: #ef4444;
+}
+
+/* ── Modals ── */
 
 .wp-overlay {
   position: fixed;
@@ -169,6 +184,8 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 2rem;
+  overflow-y: auto;
   animation: wpFadeIn 0.2s ease;
 }
 
@@ -225,7 +242,7 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   padding: 14px 16px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .wp-modal-balance span {
@@ -348,11 +365,29 @@
   cursor: not-allowed;
 }
 
+.wp-modal-submit-withdraw {
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+}
+
 .wp-modal-note {
   text-align: center;
   color: rgba(255, 255, 255, 0.25);
   font-size: 11px;
   margin: 0;
+}
+
+.wp-modal-error {
+  color: #ef4444;
+  font-size: 13px;
+  text-align: center;
+  margin: 0 0 8px;
+}
+
+.wp-modal-success {
+  color: #22c55e;
+  font-size: 13px;
+  text-align: center;
+  margin: 0 0 8px;
 }
 
 @keyframes wpFadeIn {
@@ -363,11 +398,4 @@
 @keyframes wpSlideUp {
   from { opacity: 0; transform: translateY(12px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.wp-modal-error {
-  color: #ef4444;
-  font-size: 13px;
-  text-align: center;
-  margin: 0;
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useWallet } from "../useWallet";
-import { getUser, getSafeBalances } from "../api";
+import { getUser, getSafeBalances, withdrawEth } from "../api";
 import { OnboardingFlow } from "./OnboardingFlow";
 
 function shortAddr(addr) {
@@ -10,6 +10,10 @@ function shortAddr(addr) {
 
 function formatBal(balance, decimals) {
   return (balance / 10 ** decimals).toFixed(4);
+}
+
+function weiFromEth(eth) {
+  return String(Math.floor(Number(eth) * 1e18));
 }
 
 export function WalletPanel() {
@@ -22,10 +26,18 @@ export function WalletPanel() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
   const [checking, setChecking] = useState(false);
+
   const [showDeposit, setShowDeposit] = useState(false);
   const [depositAmount, setDepositAmount] = useState("");
   const [depositing, setDepositing] = useState(false);
   const [depositError, setDepositError] = useState("");
+
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
+  const [withdrawSuccess, setWithdrawSuccess] = useState("");
+
   const dropdownRef = useRef(null);
   const checkedRef = useRef(false);
 
@@ -62,6 +74,8 @@ export function WalletPanel() {
     setBalances(bal);
   };
 
+  // Deposit
+
   const handleDeposit = async () => {
     if (!user || !depositAmount || Number(depositAmount) <= 0) return;
     setDepositing(true);
@@ -84,6 +98,34 @@ export function WalletPanel() {
     }
   };
 
+  // Withdraw
+
+  const handleWithdraw = async () => {
+    if (!user || !withdrawAmount || Number(withdrawAmount) <= 0) return;
+    setWithdrawing(true);
+    setWithdrawError("");
+    setWithdrawSuccess("");
+    try {
+      const result = await withdrawEth(
+        user.safe_address,
+        address,
+        weiFromEth(withdrawAmount)
+      );
+      setWithdrawSuccess("Retrait effectué ! Tx: " + shortAddr(result.txHash));
+      setWithdrawAmount("");
+      setTimeout(refreshBalances, 3000);
+    } catch (err) {
+      const msg = err.message;
+      if (msg.includes("insufficient") || msg.includes("tried to withdraw")) {
+        setWithdrawError("Solde du Safe insuffisant.");
+      } else {
+        setWithdrawError("Erreur: " + msg);
+      }
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
   const handleDisconnect = () => {
     disconnect();
     setUser(null);
@@ -102,7 +144,8 @@ export function WalletPanel() {
   };
 
   const ethBalance = balances?.ETH ? formatBal(balances.ETH.balance, 18) : "0";
-  const presets = ["0.001", "0.005", "0.01", "0.05"];
+  const depositPresets = ["0.001", "0.005", "0.01", "0.05"];
+  const withdrawPresets = ["0.001", "0.005", "0.01"];
 
   if (checking) {
     return (
@@ -174,14 +217,18 @@ export function WalletPanel() {
               <button className="wp-dd-btn wp-dd-btn-primary" onClick={() => { setShowDeposit(true); setDropdownOpen(false); setDepositError(""); }}>
                 Deposit
               </button>
-              <button className="wp-dd-btn wp-dd-btn-ghost" onClick={handleDisconnect}>
-                Disconnect
+              <button className="wp-dd-btn wp-dd-btn-withdraw" onClick={() => { setShowWithdraw(true); setDropdownOpen(false); setWithdrawError(""); setWithdrawSuccess(""); }}>
+                Withdraw
               </button>
             </div>
+            <button className="wp-dd-disconnect" onClick={handleDisconnect}>
+              Disconnect
+            </button>
           </div>
         )}
       </div>
 
+      {/* Deposit modal */}
       {showDeposit && createPortal(
         <div className="wp-overlay" onClick={() => setShowDeposit(false)}>
           <div className="wp-modal" onClick={(e) => e.stopPropagation()}>
@@ -193,7 +240,7 @@ export function WalletPanel() {
               <span>Safe balance</span>
               <strong>{ethBalance} ETH</strong>
             </div>
-            <label className="wp-modal-label">Amount</label>
+            <label className="wp-modal-label">Amount to deposit</label>
             <div className="wp-modal-input-wrap">
               <input
                 type="number"
@@ -208,7 +255,7 @@ export function WalletPanel() {
               <span className="wp-modal-unit">ETH</span>
             </div>
             <div className="wp-modal-presets">
-              {presets.map((v) => (
+              {depositPresets.map((v) => (
                 <button
                   key={v}
                   className={`wp-modal-preset ${depositAmount === v ? "active" : ""}`}
@@ -227,7 +274,71 @@ export function WalletPanel() {
               {depositing ? "Confirm in MetaMask…" : `Deposit ${depositAmount || "0"} ETH`}
             </button>
             {depositError && <p className="wp-modal-error">{depositError}</p>}
-            <p className="wp-modal-note">Opens MetaMask for confirmation.</p>
+            <p className="wp-modal-note">Opens MetaMask for confirmation. You pay gas fees.</p>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Withdraw modal */}
+      {showWithdraw && createPortal(
+        <div className="wp-overlay" onClick={() => setShowWithdraw(false)}>
+          <div className="wp-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wp-modal-head">
+              <h3>Withdraw ETH</h3>
+              <button className="wp-modal-close" onClick={() => setShowWithdraw(false)}>✕</button>
+            </div>
+            <div className="wp-modal-balance">
+              <span>Safe balance</span>
+              <strong>{ethBalance} ETH</strong>
+            </div>
+            <div className="wp-modal-balance">
+              <span>Withdraw to</span>
+              <strong>{shortAddr(address)}</strong>
+            </div>
+            <label className="wp-modal-label">Amount to withdraw</label>
+            <div className="wp-modal-input-wrap">
+              <input
+                type="number"
+                step="0.001"
+                min="0"
+                placeholder="0.00"
+                value={withdrawAmount}
+                onChange={(e) => { setWithdrawAmount(e.target.value); setWithdrawError(""); setWithdrawSuccess(""); }}
+                disabled={withdrawing}
+                autoFocus
+              />
+              <span className="wp-modal-unit">ETH</span>
+            </div>
+            <div className="wp-modal-presets">
+              {withdrawPresets.map((v) => (
+                <button
+                  key={v}
+                  className={`wp-modal-preset ${withdrawAmount === v ? "active" : ""}`}
+                  onClick={() => { setWithdrawAmount(v); setWithdrawError(""); setWithdrawSuccess(""); }}
+                  disabled={withdrawing}
+                >
+                  {v}
+                </button>
+              ))}
+              <button
+                className={`wp-modal-preset ${withdrawAmount === ethBalance ? "active" : ""}`}
+                onClick={() => { setWithdrawAmount(ethBalance); setWithdrawError(""); setWithdrawSuccess(""); }}
+                disabled={withdrawing}
+              >
+                Max
+              </button>
+            </div>
+            <button
+              className="wp-modal-submit wp-modal-submit-withdraw"
+              onClick={handleWithdraw}
+              disabled={withdrawing || !withdrawAmount || Number(withdrawAmount) <= 0}
+            >
+              {withdrawing ? "Processing…" : `Withdraw ${withdrawAmount || "0"} ETH`}
+            </button>
+            {withdrawError && <p className="wp-modal-error">{withdrawError}</p>}
+            {withdrawSuccess && <p className="wp-modal-success">{withdrawSuccess}</p>}
+            <p className="wp-modal-note">Funds will be sent to your wallet. Backend pays gas fees.</p>
           </div>
         </div>,
         document.body
