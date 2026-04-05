@@ -69,6 +69,12 @@ export async function getUser(walletAddress) {
   return parseApiResponse(res);
 }
 
+export async function getUserVaultSync(walletAddress) {
+  const res = await fetch(`${API_BASE}/v1/users/${walletAddress}/vault-sync`);
+  if (res.status === 404) return null;
+  return parseApiResponse(res);
+}
+
 export async function getVaultBalances() {
   return apiRequest("/v1/vaults/balances");
 }

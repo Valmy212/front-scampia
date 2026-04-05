@@ -259,6 +259,51 @@
   font-size: 0.92rem;
 }
 
+.sync-status-wrap {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+
+.sync-badge-pending {
+  color: #ffe08b;
+  background: rgba(255, 212, 77, 0.12);
+  border-color: rgba(255, 212, 77, 0.32);
+}
+
+.sync-badge-ready {
+  color: #84f0d0;
+  background: rgba(24, 223, 245, 0.12);
+  border-color: rgba(24, 223, 245, 0.3);
+}
+
+.sync-badge-timeout,
+.sync-badge-error {
+  color: #ffadad;
+  background: rgba(255, 79, 79, 0.12);
+  border-color: rgba(255, 79, 79, 0.3);
+}
+
+.sync-meta-text {
+  margin: 0;
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 .section-block {
   margin: 1.8rem 0;
   position: relative;

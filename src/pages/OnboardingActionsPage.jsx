@@ -1,7 +1,16 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../useWallet';
-import { buildCreateVault, connectWallet, getUser, listVaults } from '../api';
+import { buildCreateVault, connectWallet, getUser, getUserVaultSync, listVaults } from '../api';
+
+const DEFAULT_SYNC_RETRY_SECONDS = 2;
+const MAX_VAULT_SYNC_WAIT_MS = 60000;
+const INITIAL_SYNC_UI = {
+  state: 'idle',
+  attempt: 0,
+  nextRetrySeconds: 0,
+  elapsedSeconds: 0,
+};
 
 function getVaultId(user) {
   if (!user || typeof user !== 'object') return null;
@@ -19,6 +28,31 @@ function extractTxPayload(response) {
   return null;
 }
 
+function normalizeSyncState(payload) {
+  const vaultId = getVaultId(payload);
+  const pendingFlag = payload?.pending_sync;
+  const retryRaw = Number(payload?.retry_after_seconds);
+  const retryAfterSeconds = Number.isFinite(retryRaw) && retryRaw > 0 ? retryRaw : DEFAULT_SYNC_RETRY_SECONDS;
+  const pendingSync = typeof pendingFlag === 'boolean' ? pendingFlag : vaultId === null;
+
+  return {
+    pendingSync,
+    retryAfterSeconds,
+    vaultId,
+  };
+}
+
+function waitMs(durationMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+}
+
+function isNotFoundResponseError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('not found') || message.includes('"detail":"not found"');
+}
+
 export function OnboardingActionsPage() {
   const wallet = useWallet();
   const { address, connect, loading, error, sendBuiltTransaction } = wallet;
@@ -27,14 +61,136 @@ export function OnboardingActionsPage() {
   const [actionStatus, setActionStatus] = useState('');
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [canRetrySync, setCanRetrySync] = useState(false);
+  const [syncUi, setSyncUi] = useState(INITIAL_SYNC_UI);
   const [user, setUser] = useState(null);
   const [vaults, setVaults] = useState([]);
 
   const activeVaultId = useMemo(() => getVaultId(user), [user]);
 
+  const shouldShowRetrySync = (message) => {
+    const normalized = String(message || '').toLowerCase();
+    return normalized.includes('sync') || normalized.includes('vault_id') || normalized.includes('timeout');
+  };
+
+  const updateSyncUi = (patch) => {
+    setSyncUi((prev) => ({ ...prev, ...patch }));
+  };
+
+  const getSyncBadgeLabel = () => {
+    if (syncUi.state === 'pending') return 'Backend sync pending';
+    if (syncUi.state === 'ready') return 'Backend sync ready';
+    if (syncUi.state === 'timeout') return 'Backend sync timeout';
+    if (syncUi.state === 'error') return 'Backend sync error';
+    return 'Backend sync idle';
+  };
+
+  const waitForVaultSynchronization = async (initialPayload) => {
+    let syncPayload = initialPayload;
+    let syncState = normalizeSyncState(syncPayload);
+    const syncStartedAt = Date.now();
+    let attempts = 0;
+    let useLegacyUserPolling = false;
+    let legacyFallbackAnnounced = false;
+
+    if (syncState.pendingSync || syncState.vaultId === null) {
+      setActionStatus('Vault created. Waiting for backend vault_id synchronization...');
+      updateSyncUi({
+        state: 'pending',
+        attempt: 0,
+        nextRetrySeconds: syncState.retryAfterSeconds,
+        elapsedSeconds: 0,
+      });
+
+      while (syncState.pendingSync) {
+        if (Date.now() - syncStartedAt >= MAX_VAULT_SYNC_WAIT_MS) {
+          updateSyncUi({ state: 'timeout', nextRetrySeconds: 0 });
+          throw new Error('Backend vault sync timeout. Please retry in a few seconds.');
+        }
+
+        attempts += 1;
+        const waitSeconds = Math.max(1, Math.ceil(syncState.retryAfterSeconds));
+
+        for (let remaining = waitSeconds; remaining > 0; remaining -= 1) {
+          updateSyncUi({
+            state: 'pending',
+            attempt: attempts,
+            nextRetrySeconds: remaining,
+            elapsedSeconds: Math.floor((Date.now() - syncStartedAt) / 1000),
+          });
+          await waitMs(1000);
+        }
+
+        try {
+          if (useLegacyUserPolling) {
+            syncPayload = await getUser(address);
+          } else {
+            const vaultSyncPayload = await getUserVaultSync(address);
+            if (vaultSyncPayload === null) {
+              useLegacyUserPolling = true;
+              syncPayload = await getUser(address);
+            } else {
+              syncPayload = vaultSyncPayload;
+            }
+          }
+        } catch (err) {
+          if (!useLegacyUserPolling && isNotFoundResponseError(err)) {
+            useLegacyUserPolling = true;
+            syncPayload = await getUser(address);
+          } else {
+            throw err;
+          }
+        }
+
+        if (useLegacyUserPolling && !legacyFallbackAnnounced) {
+          setActionStatus('Sync endpoint unavailable. Polling user profile as fallback...');
+          legacyFallbackAnnounced = true;
+        }
+
+        syncState = normalizeSyncState(syncPayload);
+
+        if (!syncState.pendingSync && syncState.vaultId !== null) {
+          updateSyncUi({
+            state: 'ready',
+            attempt: attempts,
+            nextRetrySeconds: 0,
+            elapsedSeconds: Math.floor((Date.now() - syncStartedAt) / 1000),
+          });
+        }
+      }
+
+      if (syncState.vaultId === null) {
+        updateSyncUi({ state: 'error', nextRetrySeconds: 0 });
+        throw new Error('Vault sync completed but vault_id is missing in backend response.');
+      }
+    } else {
+      updateSyncUi({
+        state: 'ready',
+        attempt: 0,
+        nextRetrySeconds: 0,
+        elapsedSeconds: 0,
+      });
+    }
+
+    return { syncPayload, syncState };
+  };
+
+  const refreshProfileState = async (syncPayload, fallbackVaultId = null) => {
+    const userData = await getUser(address);
+    const localVaultId = getVaultId(userData);
+    const resolvedVaultId = localVaultId ?? getVaultId(syncPayload) ?? fallbackVaultId;
+
+    setUser(localVaultId !== null ? userData : syncPayload);
+    const allVaults = await listVaults();
+    setVaults(allVaults);
+
+    return resolvedVaultId;
+  };
+
   const handleConnectWallet = async () => {
     setActionError('');
     setActionStatus('');
+    setSyncUi(INITIAL_SYNC_UI);
 
     const connectedAddress = await connect();
     if (!connectedAddress) return;
@@ -68,6 +224,8 @@ export function OnboardingActionsPage() {
 
     setBusy(true);
     setActionError('');
+    setCanRetrySync(false);
+    setSyncUi(INITIAL_SYNC_UI);
     try {
       setActionStatus('Preparing create vault transaction...');
       const buildRes = await buildCreateVault(fee);
@@ -85,20 +243,49 @@ export function OnboardingActionsPage() {
       }
 
       setActionStatus('Vault created. Updating profile...');
-      await connectWallet(address);
-      const userData = await getUser(address);
-      setUser(userData);
-      const allVaults = await listVaults();
-      setVaults(allVaults);
-
-      const newVaultId = getVaultId(userData);
+      const connectPayload = await connectWallet(address);
+      const { syncPayload, syncState } = await waitForVaultSynchronization(connectPayload);
+      const newVaultId = await refreshProfileState(syncPayload, syncState.vaultId);
       if (newVaultId !== null) {
         setActionStatus(`Vault #${newVaultId} created successfully.`);
       } else {
         setActionStatus('Vault created. Waiting for backend vault_id synchronization.');
       }
     } catch (err) {
-      setActionError(err.message || 'Create vault error');
+      const message = err.message || 'Create vault error';
+      setActionError(message);
+      setCanRetrySync(shouldShowRetrySync(message));
+      updateSyncUi({ state: shouldShowRetrySync(message) && message.toLowerCase().includes('timeout') ? 'timeout' : 'error', nextRetrySeconds: 0 });
+      setActionStatus('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRetrySync = async () => {
+    if (!address || busy) return;
+
+    setBusy(true);
+    setActionError('');
+    setCanRetrySync(false);
+    updateSyncUi({ state: 'pending', attempt: 0, nextRetrySeconds: 0, elapsedSeconds: 0 });
+
+    try {
+      setActionStatus('Retrying backend vault_id synchronization...');
+      const connectPayload = await connectWallet(address).catch(() => null);
+      const { syncPayload: syncedPayload, syncState } = await waitForVaultSynchronization(connectPayload);
+      const syncedVaultId = await refreshProfileState(syncedPayload, syncState.vaultId);
+
+      if (syncedVaultId === null) {
+        throw new Error('Vault synchronization retry finished but no vault_id was found.');
+      }
+
+      setActionStatus(`Vault #${syncedVaultId} synchronized successfully.`);
+    } catch (err) {
+      const message = err.message || 'Vault synchronization retry error';
+      setActionError(message);
+      setCanRetrySync(shouldShowRetrySync(message));
+      updateSyncUi({ state: shouldShowRetrySync(message) && message.toLowerCase().includes('timeout') ? 'timeout' : 'error', nextRetrySeconds: 0 });
       setActionStatus('');
     } finally {
       setBusy(false);
@@ -164,6 +351,26 @@ export function OnboardingActionsPage() {
 
         {!!actionStatus && <p className="vault-ok-text">{actionStatus}</p>}
         {!!actionError && <p className="ob-error">{actionError}</p>}
+        {syncUi.state !== 'idle' && (
+          <div className="sync-status-wrap" role="status" aria-live="polite">
+            <span className={`sync-badge sync-badge-${syncUi.state}`}>{getSyncBadgeLabel()}</span>
+            {syncUi.state === 'pending' && (
+              <p className="sync-meta-text">
+                Attempt {syncUi.attempt || 1} · next check in {syncUi.nextRetrySeconds}s · elapsed {syncUi.elapsedSeconds}s
+              </p>
+            )}
+            {syncUi.state === 'ready' && (
+              <p className="sync-meta-text">Synchronization completed in {syncUi.elapsedSeconds}s.</p>
+            )}
+          </div>
+        )}
+        {address && canRetrySync && (
+          <div className="cta-row">
+            <button className="cta-button cta-button-secondary" type="button" onClick={handleRetrySync} disabled={busy}>
+              {busy ? 'Retrying sync...' : 'Retry sync'}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="section-block" aria-labelledby="onboarding-overview-title">
