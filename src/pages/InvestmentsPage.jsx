@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../useWallet';
+import { executeVaultDepositFlow, isUserRejectedError } from '../depositFlow';
 import {
   connectWallet,
   getUser,
   getVaultBalances,
+  getVaultStatus,
   getVaultUserPosition,
   getUserInvestments,
   buildVaultDeposit,
@@ -19,24 +21,16 @@ function getVaultId(user) {
   return null;
 }
 
-function extractTxPayload(response) {
-  if (!response || typeof response !== 'object') return null;
-  if (response.tx && typeof response.tx === 'object') return response.tx;
-  if (response.transaction && typeof response.transaction === 'object') return response.transaction;
-  if (response.txData && typeof response.txData === 'object') return response.txData;
-  if (response.to && response.data) return response;
-  return null;
-}
-
-function unitsFromAmount(amount, decimals = 18) {
-  const value = Number(amount);
-  if (!Number.isFinite(value) || value <= 0) return '0';
-  return String(Math.floor(value * 10 ** decimals));
-}
-
 function formatTokenAmount(balance, decimals = 18) {
   const raw = Number(balance || 0);
   return (raw / 10 ** Number(decimals)).toFixed(4);
+}
+
+function formatAddress(address) {
+  if (typeof address !== 'string') return 'N/A';
+  const value = address.trim();
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 export function InvestmentsPage() {
@@ -126,16 +120,22 @@ export function InvestmentsPage() {
     setDepositStatus('');
 
     try {
-      const decimals = Number(balances?.ETH?.decimals ?? 18);
-      const amount = unitsFromAmount(depositAmount, decimals);
-      const buildRes = await buildVaultDeposit(selectedVaultId, amount, address);
-      const txPayload = extractTxPayload(buildRes);
-      if (!txPayload) {
-        throw new Error('Deposit transaction missing in backend response');
-      }
+      const selectedVault = vaults.find((item) => {
+        const itemVaultId = item?.vault_id ?? item?.vaultId;
+        return String(itemVaultId) === String(selectedVaultId);
+      }) || null;
 
-      setDepositStatus('Signature MetaMask...');
-      const tx = await sendBuiltTransaction(txPayload);
+      const tx = await executeVaultDepositFlow({
+        address,
+        vaultId: selectedVaultId,
+        amountUi: depositAmount,
+        selectedVault,
+        getVaultStatusFn: getVaultStatus,
+        buildVaultDepositFn: buildVaultDeposit,
+        sendBuiltTransactionFn: sendBuiltTransaction,
+        onStatus: setDepositStatus,
+      });
+
       if (tx && typeof tx.wait === 'function') {
         setDepositStatus('Confirmation onchain...');
         await tx.wait();
@@ -145,7 +145,11 @@ export function InvestmentsPage() {
       await refreshData(address, user);
       setTimeout(() => setSelectedVaultId(null), 800);
     } catch (err) {
-      setDepositError(err.message || 'Deposit error');
+      if (isUserRejectedError(err)) {
+        setDepositError('Approve refuse par l utilisateur.');
+      } else {
+        setDepositError(err.message || 'Deposit error');
+      }
       setDepositStatus('');
     } finally {
       setDepositing(false);
@@ -219,10 +223,11 @@ export function InvestmentsPage() {
               {vaults.length > 0 ? (
                 vaults.map((vault) => {
                   const rowVaultId = vault.vault_id ?? vault.vaultId;
+                  const ownerAddress = vault.owner || vault.owner_address || 'N/A';
                   return (
                     <article key={String(rowVaultId)} className="section-block vault-list-card">
                       <p className="metric-label">Vault #{String(rowVaultId)}</p>
-                      <p className="section-subtitle">Owner: {vault.owner || vault.owner_address || 'N/A'}</p>
+                      <p className="section-subtitle" title={ownerAddress}>Owner: {formatAddress(ownerAddress)}</p>
                       <button
                         className="cta-button cta-button-small"
                         type="button"

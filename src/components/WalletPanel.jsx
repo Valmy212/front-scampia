@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useWallet } from "../useWallet";
+import { executeVaultDepositFlow, extractTxPayload, isUserRejectedError } from "../depositFlow";
 import {
   getUser,
   getVaultBalances,
+  getVaultStatus,
   getVaultUserPosition,
   buildVaultDeposit,
   buildVaultWithdraw,
@@ -30,14 +32,6 @@ function getVaultId(user) {
   return null;
 }
 
-function extractTxPayload(response) {
-  if (!response || typeof response !== "object") return null;
-  if (response.tx && typeof response.tx === "object") return response.tx;
-  if (response.transaction && typeof response.transaction === "object") return response.transaction;
-  if (response.txData && typeof response.txData === "object") return response.txData;
-  if (response.to && response.data) return response;
-  return null;
-}
 
 export function WalletPanel() {
   const wallet = useWallet();
@@ -54,6 +48,7 @@ export function WalletPanel() {
   const [depositAmount, setDepositAmount] = useState("");
   const [depositing, setDepositing] = useState(false);
   const [depositError, setDepositError] = useState("");
+  const [depositStatus, setDepositStatus] = useState("");
 
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -112,28 +107,36 @@ export function WalletPanel() {
 
     setDepositing(true);
     setDepositError("");
+    setDepositStatus("");
     try {
-      const decimals = Number(balances?.ETH?.decimals ?? 18);
-      const amount = unitsFromAmount(depositAmount, decimals);
-      const buildRes = await buildVaultDeposit(vaultId, amount, address);
-      const txPayload = extractTxPayload(buildRes);
+      const tx = await executeVaultDepositFlow({
+        address,
+        vaultId,
+        amountUi: depositAmount,
+        getVaultStatusFn: getVaultStatus,
+        buildVaultDepositFn: buildVaultDeposit,
+        sendBuiltTransactionFn: sendBuiltTransaction,
+        onStatus: setDepositStatus,
+      });
 
-      if (!txPayload) {
-        throw new Error("Transaction payload not found in backend response");
+      if (tx && typeof tx.wait === "function") {
+        setDepositStatus("Confirmation onchain...");
+        await tx.wait();
       }
 
-      await sendBuiltTransaction(txPayload);
       setShowDeposit(false);
       setDepositAmount("");
+      setDepositStatus("");
       setTimeout(refreshBalances, 6000);
     } catch (err) {
-      if (err.message.includes("INSUFFICIENT_FUNDS") || err.message.includes("insufficient funds")) {
+      if (isUserRejectedError(err)) {
+        setDepositError("Approve refuse par l utilisateur.");
+      } else if (String(err?.message || "").toLowerCase().includes("insufficient funds")) {
         setDepositError("Insufficient MetaMask balance. Add more ETH to your wallet.");
-      } else if (err.message.includes("user rejected") || err.message.includes("ACTION_REJECTED")) {
-        setDepositError("Transaction cancelled.");
       } else {
         setDepositError("Error: " + err.message);
       }
+      setDepositStatus("");
     } finally {
       setDepositing(false);
     }
@@ -307,7 +310,7 @@ export function WalletPanel() {
             </div>
             <div className="wp-dd-divider" />
             <div className="wp-dd-actions">
-              <button className="wp-dd-btn wp-dd-btn-primary" onClick={() => { setShowDeposit(true); setDropdownOpen(false); setDepositError(""); }}>
+              <button className="wp-dd-btn wp-dd-btn-primary" onClick={() => { setShowDeposit(true); setDropdownOpen(false); setDepositError(""); setDepositStatus(""); }}>
                 Deposit
               </button>
               <button className="wp-dd-btn wp-dd-btn-withdraw" onClick={() => { setShowWithdraw(true); setDropdownOpen(false); setWithdrawError(""); setWithdrawSuccess(""); }}>
@@ -341,7 +344,7 @@ export function WalletPanel() {
                 min="0"
                 placeholder="0.00"
                 value={depositAmount}
-                onChange={(e) => { setDepositAmount(e.target.value); setDepositError(""); }}
+                onChange={(e) => { setDepositAmount(e.target.value); setDepositError(""); setDepositStatus(""); }}
                 disabled={depositing}
                 autoFocus
               />
@@ -352,7 +355,7 @@ export function WalletPanel() {
                 <button
                   key={v}
                   className={`wp-modal-preset ${depositAmount === v ? "active" : ""}`}
-                  onClick={() => { setDepositAmount(v); setDepositError(""); }}
+                  onClick={() => { setDepositAmount(v); setDepositError(""); setDepositStatus(""); }}
                   disabled={depositing}
                 >
                   {v}
@@ -364,8 +367,9 @@ export function WalletPanel() {
               onClick={handleDeposit}
               disabled={depositing || !depositAmount || Number(depositAmount) <= 0}
             >
-              {depositing ? "Confirm in MetaMask…" : `Deposit ${depositAmount || "0"} ETH`}
+              {depositing ? "Processing..." : `Deposit ${depositAmount || "0"} ETH`}
             </button>
+            {depositStatus && <p className="wp-modal-success">{depositStatus}</p>}
             {depositError && <p className="wp-modal-error">{depositError}</p>}
             <p className="wp-modal-note">Opens MetaMask for confirmation. You pay gas fees.</p>
           </div>

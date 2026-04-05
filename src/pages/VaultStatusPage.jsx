@@ -15,6 +15,13 @@ function formatTokenAmount(balance, decimals = 18) {
   return (raw / 10 ** Number(decimals)).toFixed(4);
 }
 
+function formatAddress(address) {
+  if (typeof address !== 'string') return 'N/A';
+  const value = address.trim();
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
 export function VaultStatusPage() {
   const wallet = useWallet();
   const { address } = wallet;
@@ -108,7 +115,7 @@ export function VaultStatusPage() {
             <div className="vault-meta-grid">
               <article className="metric-card">
                 <p className="metric-label">Wallet</p>
-                <p className="metric-value metric-value-small">{address}</p>
+                <p className="metric-value metric-value-small" title={address}>{formatAddress(address)}</p>
               </article>
               <article className="metric-card">
                 <p className="metric-label">Vault ID</p>
@@ -116,7 +123,9 @@ export function VaultStatusPage() {
               </article>
               <article className="metric-card">
                 <p className="metric-label">Vault owner</p>
-                <p className="metric-value metric-value-small">{vaultStatus?.owner || user?.wallet_address || 'N/A'}</p>
+                <p className="metric-value metric-value-small" title={vaultStatus?.owner || user?.wallet_address || 'N/A'}>
+                  {formatAddress(vaultStatus?.owner || user?.wallet_address || 'N/A')}
+                </p>
               </article>
               <article className="metric-card">
                 <p className="metric-label">Owner fee bps</p>
