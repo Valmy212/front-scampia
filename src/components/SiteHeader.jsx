@@ -6,6 +6,9 @@ const brandMarkSrc = `${import.meta.env.BASE_URL}ScampIA.png`;
 
 const navItems = [
   { label: 'Home', to: '/' },
+  { label: 'Onboarding', to: '/onboarding-actions' },
+  { label: 'Vault Status', to: '/vault-status' },
+  { label: 'Investments', to: '/investments' },
   { label: 'Leaderboard', to: '/leaderboard' },
   { label: 'Open Claw Tuto', to: '/open-claw-guide' },
 ];

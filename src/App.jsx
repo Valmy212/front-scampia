@@ -7,6 +7,9 @@ import { LandingPage } from './pages/LandingPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { BotDetailPage } from './pages/BotDetailPage';
 import { OpenClawGuidePage } from './pages/OpenClawGuidePage';
+import { OnboardingActionsPage } from './pages/OnboardingActionsPage';
+import { VaultStatusPage } from './pages/VaultStatusPage';
+import { InvestmentsPage } from './pages/InvestmentsPage';
 
 function App() {
   return (
@@ -15,6 +18,9 @@ function App() {
         <SiteHeader />
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/onboarding-actions" element={<OnboardingActionsPage />} />
+          <Route path="/vault-status" element={<VaultStatusPage />} />
+          <Route path="/investments" element={<InvestmentsPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/leaderboard/:botId" element={<BotDetailPage />} />
           <Route path="/open-claw-guide" element={<OpenClawGuidePage />} />

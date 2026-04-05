@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { BrowserProvider, parseEther } from "ethers";
+import { BrowserProvider } from "ethers";
 
 const NETWORKS = {
   sepolia: {
@@ -90,16 +90,48 @@ export function useWallet() {
     setAddress(null);
   }, []);
 
-  const depositEth = useCallback(async (safeAddress, amountInEth) => {
+  const switchToChainId = useCallback(async (chainId) => {
+    if (!chainId || !window.ethereum) return;
+    const hexChainId = typeof chainId === "number" ? `0x${chainId.toString(16)}` : chainId;
+    if (!hexChainId) return;
+
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: hexChainId }],
+      });
+    } catch (err) {
+      if (err.code !== 4902) {
+        throw err;
+      }
+    }
+  }, []);
+
+  const sendBuiltTransaction = useCallback(async (txLike) => {
     if (!window.ethereum) throw new Error("MetaMask non détecté");
-    await switchNetwork();
+    if (!txLike || typeof txLike !== "object") {
+      throw new Error("Invalid transaction payload");
+    }
+
+    await switchToChainId(txLike.chainId ?? txLike.chain_id);
+
     const provider = new BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
     return signer.sendTransaction({
-      to: safeAddress,
-      value: parseEther(amountInEth),
+      to: txLike.to,
+      data: txLike.data,
+      value: txLike.value ?? "0",
     });
-  }, [switchNetwork]);
+  }, [switchToChainId]);
 
-  return { address, loading, error, autoChecked, connect, disconnect, depositEth, network: ACTIVE_NETWORK.name };
+  return {
+    address,
+    loading,
+    error,
+    autoChecked,
+    connect,
+    disconnect,
+    sendBuiltTransaction,
+    network: ACTIVE_NETWORK.name,
+  };
 }

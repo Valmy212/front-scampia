@@ -1,8 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { useWallet } from "../useWallet";
-import { getUser, getSafeBalances, withdrawEth } from "../api";
-import { OnboardingFlow } from "./OnboardingFlow";
+import {
+  getUser,
+  getVaultBalances,
+  getVaultUserPosition,
+  buildVaultDeposit,
+  buildVaultWithdraw,
+} from "../api";
 
 function shortAddr(addr) {
   return addr.slice(0, 6) + "…" + addr.slice(-4);
@@ -12,18 +18,37 @@ function formatBal(balance, decimals) {
   return (balance / 10 ** decimals).toFixed(4);
 }
 
-function weiFromEth(eth) {
-  return String(Math.floor(Number(eth) * 1e18));
+function unitsFromAmount(amount, decimals = 18) {
+  const value = Number(amount);
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  return String(Math.floor(value * 10 ** decimals));
+}
+
+function getVaultId(user) {
+  if (!user || typeof user !== "object") return null;
+  if (user.vault_id !== undefined && user.vault_id !== null) return user.vault_id;
+  if (user.vaultId !== undefined && user.vaultId !== null) return user.vaultId;
+  return null;
+}
+
+function extractTxPayload(response) {
+  if (!response || typeof response !== "object") return null;
+  if (response.tx && typeof response.tx === "object") return response.tx;
+  if (response.transaction && typeof response.transaction === "object") return response.transaction;
+  if (response.txData && typeof response.txData === "object") return response.txData;
+  if (response.to && response.data) return response;
+  return null;
 }
 
 export function WalletPanel() {
+  const navigate = useNavigate();
   const wallet = useWallet();
-  const { address, disconnect, depositEth, autoChecked } = wallet;
+  const { address, disconnect, sendBuiltTransaction, autoChecked } = wallet;
 
   const [user, setUser] = useState(null);
   const [balances, setBalances] = useState(null);
+  const [position, setPosition] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
   const [checking, setChecking] = useState(false);
 
@@ -41,6 +66,19 @@ export function WalletPanel() {
   const dropdownRef = useRef(null);
   const checkedRef = useRef(false);
 
+  const refreshBalances = async (userData = user) => {
+    if (!userData || !address) return;
+
+    const bal = await getVaultBalances();
+    setBalances(bal);
+
+    const vaultId = getVaultId(userData);
+    if (vaultId !== null) {
+      const pos = await getVaultUserPosition(vaultId, address);
+      setPosition(pos);
+    }
+  };
+
   useEffect(() => {
     if (!address || !autoChecked || checkedRef.current) return;
     checkedRef.current = true;
@@ -48,10 +86,10 @@ export function WalletPanel() {
 
     getUser(address)
       .then((userData) => {
-        if (userData && userData.safe_address) {
+        if (getVaultId(userData) !== null) {
           setUser(userData);
           setOnboarded(true);
-          return getSafeBalances(userData.safe_address).then((bal) => setBalances(bal));
+          return refreshBalances(userData);
         }
       })
       .catch(() => {})
@@ -68,30 +106,35 @@ export function WalletPanel() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const refreshBalances = async () => {
-    if (!user) return;
-    const bal = await getSafeBalances(user.safe_address);
-    setBalances(bal);
-  };
-
   // Deposit
 
   const handleDeposit = async () => {
-    if (!user || !depositAmount || Number(depositAmount) <= 0) return;
+    const vaultId = getVaultId(user);
+    if (vaultId === null || !depositAmount || Number(depositAmount) <= 0) return;
+
     setDepositing(true);
     setDepositError("");
     try {
-      await depositEth(user.safe_address, depositAmount);
+      const decimals = Number(balances?.ETH?.decimals ?? 18);
+      const amount = unitsFromAmount(depositAmount, decimals);
+      const buildRes = await buildVaultDeposit(vaultId, amount, address);
+      const txPayload = extractTxPayload(buildRes);
+
+      if (!txPayload) {
+        throw new Error("Transaction payload not found in backend response");
+      }
+
+      await sendBuiltTransaction(txPayload);
       setShowDeposit(false);
       setDepositAmount("");
       setTimeout(refreshBalances, 6000);
     } catch (err) {
       if (err.message.includes("INSUFFICIENT_FUNDS") || err.message.includes("insufficient funds")) {
-        setDepositError("Solde MetaMask insuffisant. Ajoute du ETH sur ton wallet.");
+        setDepositError("Insufficient MetaMask balance. Add more ETH to your wallet.");
       } else if (err.message.includes("user rejected") || err.message.includes("ACTION_REJECTED")) {
-        setDepositError("Transaction annulée.");
+        setDepositError("Transaction cancelled.");
       } else {
-        setDepositError("Erreur: " + err.message);
+        setDepositError("Error: " + err.message);
       }
     } finally {
       setDepositing(false);
@@ -101,25 +144,32 @@ export function WalletPanel() {
   // Withdraw
 
   const handleWithdraw = async () => {
-    if (!user || !withdrawAmount || Number(withdrawAmount) <= 0) return;
+    const vaultId = getVaultId(user);
+    if (vaultId === null || !withdrawAmount || Number(withdrawAmount) <= 0) return;
+
     setWithdrawing(true);
     setWithdrawError("");
     setWithdrawSuccess("");
     try {
-      const result = await withdrawEth(
-        user.safe_address,
-        address,
-        weiFromEth(withdrawAmount)
-      );
-      setWithdrawSuccess("Retrait effectué ! Tx: " + shortAddr(result.txHash));
+      const decimals = Number(balances?.ETH?.decimals ?? 18);
+      const shares = unitsFromAmount(withdrawAmount, decimals);
+      const buildRes = await buildVaultWithdraw(vaultId, shares, address);
+      const txPayload = extractTxPayload(buildRes);
+
+      if (!txPayload) {
+        throw new Error("Transaction payload not found in backend response");
+      }
+
+      const tx = await sendBuiltTransaction(txPayload);
+      setWithdrawSuccess("Withdraw completed. Tx: " + shortAddr(tx.hash || tx.txHash));
       setWithdrawAmount("");
       setTimeout(refreshBalances, 3000);
     } catch (err) {
       const msg = err.message;
       if (msg.includes("insufficient") || msg.includes("tried to withdraw")) {
-        setWithdrawError("Solde du Safe insuffisant.");
+        setWithdrawError("Insufficient vault balance.");
       } else {
-        setWithdrawError("Erreur: " + msg);
+        setWithdrawError("Error: " + msg);
       }
     } finally {
       setWithdrawing(false);
@@ -130,20 +180,16 @@ export function WalletPanel() {
     disconnect();
     setUser(null);
     setBalances(null);
+    setPosition(null);
     setDropdownOpen(false);
     setOnboarded(false);
     checkedRef.current = false;
   };
 
-  const handleOnboardingComplete = (config) => {
-    console.log("Agent configured:", config);
-    setUser(config.user);
-    setBalances(config.balances);
-    setShowOnboarding(false);
-    setOnboarded(true);
-  };
-
-  const ethBalance = balances?.ETH ? formatBal(balances.ETH.balance, 18) : "0";
+  const ethBalance = balances?.ETH
+    ? formatBal(balances.ETH.balance, Number(balances.ETH.decimals ?? 18))
+    : "0";
+  const userShares = position?.shares ?? position?.user_shares;
   const depositPresets = ["0.001", "0.005", "0.01", "0.05"];
   const withdrawPresets = ["0.001", "0.005", "0.01"];
 
@@ -157,22 +203,13 @@ export function WalletPanel() {
 
   if (!address || !onboarded) {
     return (
-      <>
-        <button
-          className="cta-button cta-button-small"
-          onClick={() => setShowOnboarding(true)}
-          style={{ marginLeft: "auto", whiteSpace: "nowrap" }}
-        >
-          Connect Wallet
-        </button>
-        {showOnboarding && (
-          <OnboardingFlow
-            wallet={wallet}
-            onComplete={handleOnboardingComplete}
-            onClose={() => setShowOnboarding(false)}
-          />
-        )}
-      </>
+      <button
+        className="cta-button cta-button-small"
+        onClick={() => navigate("/onboarding-actions")}
+        style={{ marginLeft: "auto", whiteSpace: "nowrap" }}
+      >
+        {!address ? "Connect Wallet" : "Continue Onboarding"}
+      </button>
     );
   }
 
@@ -194,8 +231,14 @@ export function WalletPanel() {
             </div>
             {user && (
               <div className="wp-dd-section">
-                <div className="wp-dd-label">Safe</div>
-                <div className="wp-dd-value">{shortAddr(user.safe_address)}</div>
+                <div className="wp-dd-label">Vault</div>
+                <div className="wp-dd-value">ID #{String(getVaultId(user))}</div>
+              </div>
+            )}
+            {userShares !== undefined && userShares !== null && (
+              <div className="wp-dd-section">
+                <div className="wp-dd-label">Your shares</div>
+                <div className="wp-dd-value">{String(userShares)}</div>
               </div>
             )}
             <div className="wp-dd-divider" />
@@ -237,7 +280,7 @@ export function WalletPanel() {
               <button className="wp-modal-close" onClick={() => setShowDeposit(false)}>✕</button>
             </div>
             <div className="wp-modal-balance">
-              <span>Safe balance</span>
+              <span>Vault asset balance</span>
               <strong>{ethBalance} ETH</strong>
             </div>
             <label className="wp-modal-label">Amount to deposit</label>
@@ -289,7 +332,7 @@ export function WalletPanel() {
               <button className="wp-modal-close" onClick={() => setShowWithdraw(false)}>✕</button>
             </div>
             <div className="wp-modal-balance">
-              <span>Safe balance</span>
+              <span>Vault asset balance</span>
               <strong>{ethBalance} ETH</strong>
             </div>
             <div className="wp-modal-balance">
@@ -338,7 +381,7 @@ export function WalletPanel() {
             </button>
             {withdrawError && <p className="wp-modal-error">{withdrawError}</p>}
             {withdrawSuccess && <p className="wp-modal-success">{withdrawSuccess}</p>}
-            <p className="wp-modal-note">Funds will be sent to your wallet. Backend pays gas fees.</p>
+            <p className="wp-modal-note">Funds will be sent to your wallet after confirmation.</p>
           </div>
         </div>,
         document.body
