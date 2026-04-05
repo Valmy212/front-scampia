@@ -121,9 +121,11 @@ export function OnboardingActionsPage() {
         </div>
 
         <div className="vault-page-actions">
-          <button className="cta-button" type="button" onClick={handleConnectWallet} disabled={busy || loading}>
-            {loading || busy ? 'Connecting...' : 'Connect Wallet'}
-          </button>
+          {!address && (
+            <button className="cta-button" type="button" onClick={handleConnectWallet} disabled={busy || loading}>
+              {loading || busy ? 'Connecting...' : 'Connect Wallet'}
+            </button>
+          )}
           <span className="vault-inline-text">Wallet: {address || 'not connected'}</span>
         </div>
         {error && <p className="ob-error">{error}</p>}

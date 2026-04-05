@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
 import { useWallet } from "../useWallet";
 import {
   getUser,
@@ -41,9 +40,8 @@ function extractTxPayload(response) {
 }
 
 export function WalletPanel() {
-  const navigate = useNavigate();
   const wallet = useWallet();
-  const { address, disconnect, sendBuiltTransaction, autoChecked } = wallet;
+  const { address, loading, error: walletError, connect, disconnect, sendBuiltTransaction, autoChecked } = wallet;
 
   const [user, setUser] = useState(null);
   const [balances, setBalances] = useState(null);
@@ -186,12 +184,41 @@ export function WalletPanel() {
     checkedRef.current = false;
   };
 
+  const handleConnect = async () => {
+    const connectedAddress = await connect();
+    if (!connectedAddress) return;
+
+    setChecking(true);
+    try {
+      const userData = await getUser(connectedAddress).catch(() => null);
+      if (getVaultId(userData) !== null) {
+        setUser(userData);
+        setOnboarded(true);
+        await refreshBalances(userData);
+      }
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const ethBalance = balances?.ETH
     ? formatBal(balances.ETH.balance, Number(balances.ETH.decimals ?? 18))
     : "0";
   const userShares = position?.shares ?? position?.user_shares;
   const depositPresets = ["0.001", "0.005", "0.01", "0.05"];
   const withdrawPresets = ["0.001", "0.005", "0.01"];
+
+  const connectErrorMessage = (() => {
+    if (!walletError) return "";
+    const lowered = String(walletError).toLowerCase();
+    if (lowered.includes("user rejected") || lowered.includes("action_rejected")) {
+      return "Connection cancelled in MetaMask.";
+    }
+    if (lowered.includes("metamask")) {
+      return walletError;
+    }
+    return `Wallet connection error: ${walletError}`;
+  })();
 
   if (checking) {
     return (
@@ -203,13 +230,24 @@ export function WalletPanel() {
 
   if (!address) {
     return (
-      <button
-        className="cta-button cta-button-small"
-        onClick={() => navigate("/onboarding-actions")}
-        style={{ marginLeft: "auto", whiteSpace: "nowrap" }}
-      >
-        Connect Wallet
-      </button>
+      <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+        <button
+          className="cta-button cta-button-small"
+          onClick={handleConnect}
+          disabled={loading}
+          style={{ whiteSpace: "nowrap" }}
+        >
+          {loading ? "Connecting..." : "Connect Wallet"}
+        </button>
+        {!!connectErrorMessage && (
+          <span
+            role="alert"
+            style={{ color: "#f87171", fontSize: "12px", maxWidth: "230px", textAlign: "right", lineHeight: 1.2 }}
+          >
+            {connectErrorMessage}
+          </span>
+        )}
+      </div>
     );
   }
 
