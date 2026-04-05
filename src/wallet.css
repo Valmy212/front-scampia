@@ -1,8 +1,14 @@
 /* ── Wallet trigger button in header ── */
 
+.wp-top-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .wp {
   position: relative;
-  margin-left: auto;
 }
 
 .wp-trigger {

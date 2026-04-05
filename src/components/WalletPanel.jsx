@@ -268,60 +268,70 @@ export function WalletPanel() {
 
   return (
     <>
-      <div className="wp" ref={dropdownRef}>
-        <button className="wp-trigger" onClick={() => setDropdownOpen(!dropdownOpen)}>
-          <span className="wp-dot" />
-          <span className="wp-addr">{shortAddr(address)}</span>
-          <span className="wp-bal">{ethBalance} ETH</span>
-          <span className={`wp-chevron ${dropdownOpen ? "wp-chevron-open" : ""}`}>▾</span>
+      <div className="wp-top-actions">
+        <button
+          className="cta-button cta-button-small cta-button-secondary"
+          onClick={handleDisconnect}
+          style={{ whiteSpace: "nowrap" }}
+        >
+          Disconnect
         </button>
 
-        {dropdownOpen && (
-          <div className="wp-dropdown">
-            <div className="wp-dd-section">
-              <div className="wp-dd-label">Wallet</div>
-              <div className="wp-dd-value">{shortAddr(address)}</div>
-            </div>
-            {user && (
+        <div className="wp" ref={dropdownRef}>
+          <button className="wp-trigger" onClick={() => setDropdownOpen(!dropdownOpen)}>
+            <span className="wp-dot" />
+            <span className="wp-addr">{shortAddr(address)}</span>
+            <span className="wp-bal">{ethBalance} ETH</span>
+            <span className={`wp-chevron ${dropdownOpen ? "wp-chevron-open" : ""}`}>▾</span>
+          </button>
+
+          {dropdownOpen && (
+            <div className="wp-dropdown">
               <div className="wp-dd-section">
-                <div className="wp-dd-label">Vault</div>
-                <div className="wp-dd-value">ID #{String(getVaultId(user))}</div>
+                <div className="wp-dd-label">Wallet</div>
+                <div className="wp-dd-value">{shortAddr(address)}</div>
               </div>
-            )}
-            {userShares !== undefined && userShares !== null && (
-              <div className="wp-dd-section">
-                <div className="wp-dd-label">Your shares</div>
-                <div className="wp-dd-value">{String(userShares)}</div>
-              </div>
-            )}
-            <div className="wp-dd-divider" />
-            <div className="wp-dd-section">
-              <div className="wp-dd-label">Balances</div>
-              {balances ? (
-                Object.entries(balances).map(([symbol, info]) => (
-                  <div key={symbol} className="wp-dd-balance">
-                    <span>{symbol}</span>
-                    <span>{formatBal(info.balance, info.decimals)}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="wp-dd-empty">Loading…</div>
+              {user && (
+                <div className="wp-dd-section">
+                  <div className="wp-dd-label">Vault</div>
+                  <div className="wp-dd-value">ID #{String(getVaultId(user))}</div>
+                </div>
               )}
-            </div>
-            <div className="wp-dd-divider" />
-            <div className="wp-dd-actions">
-              <button className="wp-dd-btn wp-dd-btn-primary" onClick={() => { setShowDeposit(true); setDropdownOpen(false); setDepositError(""); setDepositStatus(""); }}>
-                Deposit
+              {userShares !== undefined && userShares !== null && (
+                <div className="wp-dd-section">
+                  <div className="wp-dd-label">Your shares</div>
+                  <div className="wp-dd-value">{String(userShares)}</div>
+                </div>
+              )}
+              <div className="wp-dd-divider" />
+              <div className="wp-dd-section">
+                <div className="wp-dd-label">Balances</div>
+                {balances ? (
+                  Object.entries(balances).map(([symbol, info]) => (
+                    <div key={symbol} className="wp-dd-balance">
+                      <span>{symbol}</span>
+                      <span>{formatBal(info.balance, info.decimals)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="wp-dd-empty">Loading…</div>
+                )}
+              </div>
+              <div className="wp-dd-divider" />
+              <div className="wp-dd-actions">
+                <button className="wp-dd-btn wp-dd-btn-primary" onClick={() => { setShowDeposit(true); setDropdownOpen(false); setDepositError(""); setDepositStatus(""); }}>
+                  Deposit
+                </button>
+                <button className="wp-dd-btn wp-dd-btn-withdraw" onClick={() => { setShowWithdraw(true); setDropdownOpen(false); setWithdrawError(""); setWithdrawSuccess(""); }}>
+                  Withdraw
+                </button>
+              </div>
+              <button className="wp-dd-disconnect" onClick={handleDisconnect}>
+                Disconnect
               </button>
-              <button className="wp-dd-btn wp-dd-btn-withdraw" onClick={() => { setShowWithdraw(true); setDropdownOpen(false); setWithdrawError(""); setWithdrawSuccess(""); }}>
-                Withdraw
-              </button>
             </div>
-            <button className="wp-dd-disconnect" onClick={handleDisconnect}>
-              Disconnect
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Deposit modal */}
