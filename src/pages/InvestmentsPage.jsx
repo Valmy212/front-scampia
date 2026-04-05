@@ -7,6 +7,7 @@ import {
   getUser,
   getVaultBalances,
   getVaultUserPosition,
+  getUserInvestments,
   buildVaultDeposit,
   listVaults,
 } from '../api';
@@ -47,6 +48,7 @@ export function InvestmentsPage() {
   const [user, setUser] = useState(null);
   const [balances, setBalances] = useState(null);
   const [position, setPosition] = useState(null);
+  const [investments, setInvestments] = useState([]);
   const [vaults, setVaults] = useState([]);
 
   const [selectedVaultId, setSelectedVaultId] = useState(null);
@@ -60,30 +62,17 @@ export function InvestmentsPage() {
   const refreshData = async (walletAddress, currentUser) => {
     const effectiveVaultId = getVaultId(currentUser);
 
-    const [bal, pos] = await Promise.all([
+    const [bal, pos, investmentItems, listedVaults] = await Promise.all([
       getVaultBalances(),
       effectiveVaultId !== null ? getVaultUserPosition(effectiveVaultId, walletAddress).catch(() => null) : Promise.resolve(null),
+      getUserInvestments(walletAddress),
+      listVaults(),
     ]);
 
     setBalances(bal);
     setPosition(pos);
-
-    try {
-      const listedVaults = await listVaults();
-      if (Array.isArray(listedVaults) && listedVaults.length > 0) {
-        setVaults(listedVaults);
-        return;
-      }
-    } catch {
-      // TODO(front): replace fallback once backend list endpoint is available everywhere.
-    }
-
-    // TODO(back): backend should return a complete list of joinable vaults for this user.
-    if (effectiveVaultId !== null) {
-      setVaults([{ vault_id: effectiveVaultId, owner: currentUser?.wallet_address || walletAddress }]);
-    } else {
-      setVaults([]);
-    }
+    setInvestments(investmentItems);
+    setVaults(listedVaults);
   };
 
   useEffect(() => {
@@ -205,15 +194,15 @@ export function InvestmentsPage() {
               </article>
               <article className="metric-card">
                 <p className="metric-label">User share</p>
-                <p className="metric-value">{String(position?.shares ?? position?.user_shares ?? 'N/A')}</p>
+                <p className="metric-value">{String(position?.shares ?? position?.user_shares ?? investments[0]?.shares ?? 'N/A')}</p>
               </article>
               <article className="metric-card">
                 <p className="metric-label">Value</p>
-                <p className="metric-value">{String(position?.value ?? position?.position_value ?? 'N/A')}</p>
+                <p className="metric-value">{String(position?.value ?? position?.position_value ?? investments[0]?.value ?? 'N/A')}</p>
               </article>
               <article className="metric-card">
                 <p className="metric-label">Profit</p>
-                <p className="metric-value">{String(position?.profit ?? position?.pnl ?? 'N/A')}</p>
+                <p className="metric-value">{String(position?.profit ?? position?.pnl ?? investments[0]?.profit ?? 'N/A')}</p>
               </article>
             </div>
           </section>

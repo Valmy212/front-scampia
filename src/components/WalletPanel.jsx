@@ -176,8 +176,8 @@ export function WalletPanel() {
     }
   };
 
-  const handleDisconnect = () => {
-    disconnect();
+  const handleDisconnect = async () => {
+    await disconnect();
     setUser(null);
     setBalances(null);
     setPosition(null);
@@ -201,14 +201,26 @@ export function WalletPanel() {
     );
   }
 
-  if (!address || !onboarded) {
+  if (!address) {
     return (
       <button
         className="cta-button cta-button-small"
         onClick={() => navigate("/onboarding-actions")}
         style={{ marginLeft: "auto", whiteSpace: "nowrap" }}
       >
-        {!address ? "Connect Wallet" : "Continue Onboarding"}
+        Connect Wallet
+      </button>
+    );
+  }
+
+  if (!onboarded) {
+    return (
+      <button
+        className="cta-button cta-button-small"
+        onClick={handleDisconnect}
+        style={{ marginLeft: "auto", whiteSpace: "nowrap" }}
+      >
+        Disconnect
       </button>
     );
   }

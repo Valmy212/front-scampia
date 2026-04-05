@@ -45,16 +45,8 @@ export function OnboardingActionsPage() {
       await connectWallet(connectedAddress);
       const userData = await getUser(connectedAddress);
       setUser(userData);
-
-      try {
-        const allVaults = await listVaults();
-        if (Array.isArray(allVaults)) {
-          setVaults(allVaults);
-        }
-      } catch {
-        // TODO(front): remove this silent fallback once backend /v1/vaults is available in all environments.
-        setVaults([]);
-      }
+      const allVaults = await listVaults();
+      setVaults(allVaults);
 
       setActionStatus('Wallet connected. You can create a vault now.');
     } catch (err) {
@@ -96,15 +88,8 @@ export function OnboardingActionsPage() {
       await connectWallet(address);
       const userData = await getUser(address);
       setUser(userData);
-
-      try {
-        const allVaults = await listVaults();
-        if (Array.isArray(allVaults)) {
-          setVaults(allVaults);
-        }
-      } catch {
-        setVaults([]);
-      }
+      const allVaults = await listVaults();
+      setVaults(allVaults);
 
       const newVaultId = getVaultId(userData);
       if (newVaultId !== null) {

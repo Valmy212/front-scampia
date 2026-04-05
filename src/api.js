@@ -7,13 +7,60 @@ async function parseApiResponse(res) {
   return res.json();
 }
 
-export async function connectWallet(walletAddress) {
-  const res = await fetch(`${API_BASE}/v1/users/connect`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ wallet_address: walletAddress }),
-  });
+async function apiRequest(path, options = {}) {
+  const { method = "GET", body } = options;
+  const init = { method, headers: {} };
+
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, init);
   return parseApiResponse(res);
+}
+
+function normalizeVaultPosition(position) {
+  if (!position || typeof position !== "object") return position;
+
+  const principal = position.principal ?? position.principal_amount ?? null;
+  const estimatedAssets =
+    position.estimatedAssets ??
+    position.estimated_assets ??
+    position.value ??
+    position.position_value ??
+    null;
+
+  let profit = position.profit ?? position.pnl ?? null;
+
+  if (profit === null && principal !== null && estimatedAssets !== null) {
+    try {
+      profit = (BigInt(estimatedAssets) - BigInt(principal)).toString();
+    } catch {
+      profit = null;
+    }
+  }
+
+  return {
+    ...position,
+    vault_id: position.vault_id ?? position.vaultId ?? null,
+    user_address: position.user_address ?? position.user ?? null,
+    shares: position.shares ?? null,
+    principal,
+    estimatedAssets,
+    estimated_assets: estimatedAssets,
+    value: position.value ?? position.position_value ?? estimatedAssets,
+    position_value: position.position_value ?? position.value ?? estimatedAssets,
+    profit,
+    pnl: position.pnl ?? profit,
+  };
+}
+
+export async function connectWallet(walletAddress) {
+  return apiRequest("/v1/users/connect", {
+    method: "POST",
+    body: { wallet_address: walletAddress },
+  });
 }
 
 export async function getUser(walletAddress) {
@@ -23,57 +70,67 @@ export async function getUser(walletAddress) {
 }
 
 export async function getVaultBalances() {
-  const res = await fetch(`${API_BASE}/v1/vaults/balances`);
-  return parseApiResponse(res);
+  return apiRequest("/v1/vaults/balances");
 }
 
 export async function getVaultUserPosition(vaultId, userAddress) {
-  const res = await fetch(`${API_BASE}/v1/vaults/${vaultId}/positions/${userAddress}`);
-  return parseApiResponse(res);
+  const payload = await apiRequest(`/v1/vaults/${vaultId}/positions/${userAddress}`);
+  return normalizeVaultPosition(payload);
 }
 
 export async function buildVaultDeposit(vaultId, amount, receiver) {
-  const res = await fetch(`${API_BASE}/v1/vaults/deposit/build`, {
+  return apiRequest("/v1/vaults/deposit/build", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vault_id: vaultId, amount, receiver }),
+    body: { vault_id: vaultId, amount, receiver },
   });
-  return parseApiResponse(res);
 }
 
 export async function buildCreateVault(ownerFeeBps) {
-  const res = await fetch(`${API_BASE}/v1/vaults/create/build`, {
+  return apiRequest("/v1/vaults/create/build", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ owner_fee_bps: ownerFeeBps }),
+    body: { owner_fee_bps: ownerFeeBps },
   });
-  return parseApiResponse(res);
 }
 
 export async function getVaultTokenBalance(tokenAddress) {
-  const res = await fetch(`${API_BASE}/v1/vaults/balance/${tokenAddress}`);
-  return parseApiResponse(res);
+  return apiRequest(`/v1/vaults/balance/${tokenAddress}`);
 }
 
 export async function listVaults() {
-  // TODO(back): expose GET /v1/vaults returning vault metadata list (vault_id, owner, asset, total_assets, total_shares).
-  const res = await fetch(`${API_BASE}/v1/vaults`);
-  if (res.status === 404) return [];
-  return parseApiResponse(res);
+  const payload = await apiRequest("/v1/vaults");
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
 }
 
 export async function getVaultStatus(vaultId) {
-  // TODO(back): expose GET /v1/vaults/{vault_id} with aggregated vault metrics for dashboard status page.
-  const res = await fetch(`${API_BASE}/v1/vaults/${vaultId}`);
-  if (res.status === 404) return null;
-  return parseApiResponse(res);
+  return apiRequest(`/v1/vaults/${vaultId}`);
+}
+
+export async function getUserInvestments(walletAddress) {
+  const payload = await apiRequest(`/v1/users/${walletAddress}/investments`);
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
 }
 
 export async function buildVaultWithdraw(vaultId, shares, receiver) {
-  const res = await fetch(`${API_BASE}/v1/vaults/withdraw/build`, {
+  return apiRequest("/v1/vaults/withdraw/build", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vault_id: vaultId, shares, receiver }),
+    body: { vault_id: vaultId, shares, receiver },
   });
-  return parseApiResponse(res);
+}
+
+export async function registerVaultEns(payload) {
+  return apiRequest("/v1/ens/vaults/register", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function updateVaultEnsPolicy(vaultId, payload) {
+  return apiRequest(`/v1/ens/vaults/${vaultId}/policy`, {
+    method: "PUT",
+    body: payload,
+  });
 }

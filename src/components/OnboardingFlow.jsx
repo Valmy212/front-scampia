@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  API_BASE,
   connectWallet as apiConnectWallet,
   getVaultBalances,
   buildCreateVault,
+  registerVaultEns,
+  updateVaultEnsPolicy,
 } from "../api";
 
 const TOKENS = [
@@ -190,36 +191,29 @@ export function OnboardingFlow({ wallet, onComplete, onClose }) {
     setSubmitting(true);
 
     try {
-      // 1. Create ENS subname (backend expects confirmation)
-      setSubmitStatus("Creating ENS name...");
-      const ensRes = await fetch(`${API_BASE}/v1/ens/subnames`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          parent_name: "scampia.eth",
-          label: ensLabel,
-          safe_address: user.safe_address || user.vault_address,
-        }),
-      });
-      if (!ensRes.ok) {
-        const err = await ensRes.json();
-        throw new Error(err.detail || "ENS creation failed");
+      const vaultId = getVaultId(user);
+      if (vaultId === null) {
+        throw new Error("No vault_id found for ENS registration");
       }
 
-      // 2. Link the address to ENS name
-      setSubmitStatus("Setting ENS records...");
-      const recordsRes = await fetch(`${API_BASE}/v1/ens/records`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${ensLabel}.scampia.eth`,
-          address: user.safe_address || user.vault_address,
-        }),
+      const policyPayload = {
+        stop_loss_pct: Number(stopLoss),
+        take_profit_pct: Number(stopWin),
+        max_open_positions: Number(maxTradesDaily),
+        min_eth_balance: Number(ethMinimum),
+        authorized_tokens: selectedTokens,
+      };
+
+      setSubmitStatus("Registering ENS profile...");
+      await registerVaultEns({
+        vault_id: Number(vaultId),
+        label: ensLabel,
+        ...policyPayload,
       });
-      if (!recordsRes.ok) {
-        const err = await recordsRes.json();
-        throw new Error(err.detail || "ENS records failed");
-      }
+
+      // Keep policy update explicit in case backend requires a second update call.
+      setSubmitStatus("Applying ENS policy...");
+      await updateVaultEnsPolicy(Number(vaultId), policyPayload);
 
       console.log("User preferences:", {
         wallet: address,

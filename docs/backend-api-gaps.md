@@ -1,6 +1,10 @@
-# Backend API Gaps For Front Split
+# Backend API Status For Front Split
 
-This file tracks missing or unstable backend APIs needed by the new split frontend flow:
+This file tracks API status for the split frontend flow.
+
+Status: previously missing endpoints are now available in backend v0.2.0 and integrated in frontend.
+
+Integrated frontend capabilities:
 
 - Connect Wallet action
 - Create Vault action
@@ -8,7 +12,7 @@ This file tracks missing or unstable backend APIs needed by the new split fronte
 - Vault list with click-to-deposit
 - Investments page (vault info, user share, value, profit)
 
-## Required APIs
+## Available APIs
 
 1. List vaults
 - Route: GET /api/v1/vaults
@@ -68,11 +72,10 @@ This file tracks missing or unstable backend APIs needed by the new split fronte
 - POST /api/v1/vaults/deposit/build
 - POST /api/v1/vaults/withdraw/build
 
-## Front TODO Markers Added
+## Removed TODOs
 
-- src/api.js:
-  - TODO(back): add GET /v1/vaults with metadata list.
-  - TODO(back): add GET /v1/vaults/{vault_id} status endpoint.
-- src/pages/InvestmentsPage.jsx:
-  - TODO(back): return complete joinable vault list for user.
-  - TODO(front): remove fallback when list endpoint is stable everywhere.
+- Removed backend TODO markers for:
+  - GET /v1/vaults
+  - GET /v1/vaults/{vault_id}
+  - GET /v1/users/{wallet_address}/investments
+- Removed frontend fallback logic that assumed vault list endpoint was unavailable.
