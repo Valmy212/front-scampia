@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { BrowserProvider, formatEther } from "ethers";
 import { useWallet } from "../useWallet";
 import { executeVaultDepositFlow, extractTxPayload, isUserRejectedError } from "../depositFlow";
 import {
@@ -39,6 +40,7 @@ export function WalletPanel() {
 
   const [user, setUser] = useState(null);
   const [balances, setBalances] = useState(null);
+  const [walletEthBalance, setWalletEthBalance] = useState("0");
   const [position, setPosition] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
@@ -59,8 +61,26 @@ export function WalletPanel() {
   const dropdownRef = useRef(null);
   const checkedRef = useRef(false);
 
+  const refreshWalletBalance = async (targetAddress = address) => {
+    if (!targetAddress || !window.ethereum) {
+      setWalletEthBalance("0");
+      return;
+    }
+
+    try {
+      const provider = new BrowserProvider(window.ethereum);
+      const balanceWei = await provider.getBalance(targetAddress);
+      setWalletEthBalance(Number(formatEther(balanceWei)).toFixed(4));
+    } catch {
+      // Keep existing display value if a transient RPC issue occurs.
+    }
+  };
+
   const refreshBalances = async (userData = user) => {
-    if (!userData || !address) return;
+    if (!address) return;
+
+    await refreshWalletBalance(address);
+    if (!userData) return;
 
     const bal = await getVaultBalances();
     setBalances(bal);
@@ -77,6 +97,8 @@ export function WalletPanel() {
     checkedRef.current = true;
     setChecking(true);
 
+    refreshWalletBalance(address).catch(() => {});
+
     getUser(address)
       .then((userData) => {
         if (getVaultId(userData) !== null) {
@@ -88,6 +110,19 @@ export function WalletPanel() {
       .catch(() => {})
       .finally(() => setChecking(false));
   }, [address, autoChecked]);
+
+  useEffect(() => {
+    if (!address) {
+      setWalletEthBalance("0");
+      return;
+    }
+
+    const timer = setInterval(() => {
+      refreshWalletBalance(address).catch(() => {});
+    }, 15000);
+
+    return () => clearInterval(timer);
+  }, [address]);
 
   useEffect(() => {
     function handleClick(e) {
@@ -181,6 +216,7 @@ export function WalletPanel() {
     await disconnect();
     setUser(null);
     setBalances(null);
+    setWalletEthBalance("0");
     setPosition(null);
     setDropdownOpen(false);
     setOnboarded(false);
@@ -207,6 +243,7 @@ export function WalletPanel() {
   const ethBalance = balances?.ETH
     ? formatBal(balances.ETH.balance, Number(balances.ETH.decimals ?? 18))
     : "0";
+  const vaultEthBalance = ethBalance;
   const userShares = position?.shares ?? position?.user_shares;
   const depositPresets = ["0.001", "0.005", "0.01", "0.05"];
   const withdrawPresets = ["0.001", "0.005", "0.01"];
@@ -281,7 +318,7 @@ export function WalletPanel() {
           <button className="wp-trigger" onClick={() => setDropdownOpen(!dropdownOpen)}>
             <span className="wp-dot" />
             <span className="wp-addr">{shortAddr(address)}</span>
-            <span className="wp-bal">{ethBalance} ETH</span>
+            <span className="wp-bal">{walletEthBalance} ETH</span>
             <span className={`wp-chevron ${dropdownOpen ? "wp-chevron-open" : ""}`}>▾</span>
           </button>
 
@@ -343,8 +380,8 @@ export function WalletPanel() {
               <button className="wp-modal-close" onClick={() => setShowDeposit(false)}>✕</button>
             </div>
             <div className="wp-modal-balance">
-              <span>Vault asset balance</span>
-              <strong>{ethBalance} ETH</strong>
+              <span>Wallet balance</span>
+              <strong>{walletEthBalance} ETH</strong>
             </div>
             <label className="wp-modal-label">Amount to deposit</label>
             <div className="wp-modal-input-wrap">
@@ -397,7 +434,7 @@ export function WalletPanel() {
             </div>
             <div className="wp-modal-balance">
               <span>Vault asset balance</span>
-              <strong>{ethBalance} ETH</strong>
+              <strong>{vaultEthBalance} ETH</strong>
             </div>
             <div className="wp-modal-balance">
               <span>Withdraw to</span>
@@ -430,7 +467,7 @@ export function WalletPanel() {
               ))}
               <button
                 className={`wp-modal-preset ${withdrawAmount === ethBalance ? "active" : ""}`}
-                onClick={() => { setWithdrawAmount(ethBalance); setWithdrawError(""); setWithdrawSuccess(""); }}
+                onClick={() => { setWithdrawAmount(vaultEthBalance); setWithdrawError(""); setWithdrawSuccess(""); }}
                 disabled={withdrawing}
               >
                 Max
