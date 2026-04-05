@@ -91,6 +91,12 @@ export async function buildVaultDeposit(vaultId, amount, receiver) {
   });
 }
 
+export async function getVaultDepositPrecheck(vaultId, ownerAddress, amount = 0) {
+  const encodedOwner = encodeURIComponent(ownerAddress);
+  const encodedAmount = encodeURIComponent(String(amount));
+  return apiRequest(`/v1/vaults/${vaultId}/deposit/allowance/${encodedOwner}?amount=${encodedAmount}`);
+}
+
 export async function buildCreateVault(ownerFeeBps) {
   return apiRequest("/v1/vaults/create/build", {
     method: "POST",

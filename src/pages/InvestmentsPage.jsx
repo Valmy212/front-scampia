@@ -7,6 +7,7 @@ import {
   connectWallet,
   getUser,
   getVaultBalances,
+  getVaultDepositPrecheck,
   getVaultStatus,
   getVaultUserPosition,
   getUserInvestments,
@@ -33,6 +34,59 @@ function formatAddress(address) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
+function extractApiKey(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  return payload.api_key ?? payload.apiKey ?? payload.key ?? null;
+}
+
+function mergeUserWithConnectPayload(userData, connectPayload, walletAddress) {
+  return {
+    ...(userData || {}),
+    wallet_address: userData?.wallet_address || connectPayload?.wallet_address || walletAddress || null,
+    api_key: extractApiKey(userData) || extractApiKey(connectPayload) || null,
+  };
+}
+
+function isNativeLikeAddress(address) {
+  if (typeof address !== 'string') return false;
+  const normalized = address.toLowerCase();
+  return (
+    normalized === '0x0000000000000000000000000000000000000000' ||
+    normalized === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+  );
+}
+
+function resolveVaultTokenSymbol(vault) {
+  if (!vault || typeof vault !== 'object') return 'USDC';
+
+  const symbolCandidates = [
+    vault.asset_symbol,
+    vault.assetSymbol,
+    vault.token_symbol,
+    vault.tokenSymbol,
+    vault.symbol,
+  ];
+
+  for (const candidate of symbolCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim().toUpperCase();
+    }
+  }
+
+  const tokenAddress =
+    vault.asset_token ??
+    vault.assetToken ??
+    vault.token_address ??
+    vault.token ??
+    null;
+
+  if (typeof tokenAddress === 'string' && isNativeLikeAddress(tokenAddress)) {
+    return 'ETH';
+  }
+
+  return 'USDC';
+}
+
 export function InvestmentsPage() {
   const wallet = useWallet();
   const { address, sendBuiltTransaction } = wallet;
@@ -52,6 +106,17 @@ export function InvestmentsPage() {
   const [depositStatus, setDepositStatus] = useState('');
 
   const vaultId = useMemo(() => getVaultId(user), [user]);
+  const selectedVault = useMemo(() => {
+    if (selectedVaultId === null) return null;
+    return vaults.find((item) => {
+      const itemVaultId = item?.vault_id ?? item?.vaultId;
+      return String(itemVaultId) === String(selectedVaultId);
+    }) || null;
+  }, [vaults, selectedVaultId]);
+  const selectedVaultTokenSymbol = useMemo(
+    () => resolveVaultTokenSymbol(selectedVault),
+    [selectedVault],
+  );
 
   const refreshData = async (walletAddress, currentUser) => {
     const effectiveVaultId = getVaultId(currentUser);
@@ -79,11 +144,13 @@ export function InvestmentsPage() {
       setError('');
 
       try {
-        await connectWallet(address);
-        const userData = await getUser(address);
+        const connectPayload = await connectWallet(address);
+        const userData = await getUser(address).catch(() => null);
         if (cancelled) return;
-        setUser(userData);
-        await refreshData(address, userData);
+
+        const mergedUser = mergeUserWithConnectPayload(userData, connectPayload, address);
+        setUser(mergedUser);
+        await refreshData(address, mergedUser);
       } catch (err) {
         if (cancelled) return;
         setError(err.message || 'Error loading investments');
@@ -120,17 +187,13 @@ export function InvestmentsPage() {
     setDepositStatus('');
 
     try {
-      const selectedVault = vaults.find((item) => {
-        const itemVaultId = item?.vault_id ?? item?.vaultId;
-        return String(itemVaultId) === String(selectedVaultId);
-      }) || null;
-
       const tx = await executeVaultDepositFlow({
         address,
         vaultId: selectedVaultId,
         amountUi: depositAmount,
         selectedVault,
         getVaultStatusFn: getVaultStatus,
+        getVaultDepositPrecheckFn: getVaultDepositPrecheck,
         buildVaultDepositFn: buildVaultDeposit,
         sendBuiltTransactionFn: sendBuiltTransaction,
         onStatus: setDepositStatus,
@@ -207,6 +270,12 @@ export function InvestmentsPage() {
               <article className="metric-card">
                 <p className="metric-label">Profit</p>
                 <p className="metric-value">{String(position?.profit ?? position?.pnl ?? investments[0]?.profit ?? 'N/A')}</p>
+              </article>
+              <article className="metric-card">
+                <p className="metric-label">API Key</p>
+                <p className="metric-value metric-value-small" title={user?.api_key || 'N/A'}>
+                  {user?.api_key || 'N/A'}
+                </p>
               </article>
             </div>
           </section>
@@ -291,7 +360,7 @@ export function InvestmentsPage() {
         <div className="wp-overlay" onClick={() => setSelectedVaultId(null)}>
           <div className="wp-modal" onClick={(e) => e.stopPropagation()}>
             <div className="wp-modal-head">
-              <h3>Add funds</h3>
+              <h3>{`Add funds (${selectedVaultTokenSymbol})`}</h3>
               <button className="wp-modal-close" onClick={() => setSelectedVaultId(null)}>✕</button>
             </div>
             <div className="wp-modal-balance">
@@ -313,10 +382,10 @@ export function InvestmentsPage() {
                 disabled={depositing}
                 autoFocus
               />
-              <span className="wp-modal-unit">ETH</span>
+              <span className="wp-modal-unit">{selectedVaultTokenSymbol}</span>
             </div>
             <button className="wp-modal-submit" onClick={handleDeposit} disabled={depositing}>
-              {depositing ? 'Processing...' : 'Confirm deposit'}
+              {depositing ? 'Processing...' : `Confirm deposit ${selectedVaultTokenSymbol}`}
             </button>
             {!!depositError && <p className="wp-modal-error">{depositError}</p>}
             {!!depositStatus && <p className="wp-modal-success">{depositStatus}</p>}

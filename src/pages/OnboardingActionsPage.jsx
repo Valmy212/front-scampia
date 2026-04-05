@@ -53,6 +53,19 @@ function isNotFoundResponseError(error) {
   return message.includes('not found') || message.includes('"detail":"not found"');
 }
 
+function extractApiKey(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  return payload.api_key ?? payload.apiKey ?? payload.key ?? null;
+}
+
+function mergeUserWithConnectPayload(userData, connectPayload, walletAddress) {
+  return {
+    ...(userData || {}),
+    wallet_address: userData?.wallet_address || connectPayload?.wallet_address || walletAddress || null,
+    api_key: extractApiKey(userData) || extractApiKey(connectPayload) || null,
+  };
+}
+
 export function OnboardingActionsPage() {
   const wallet = useWallet();
   const { address, connect, loading, error, sendBuiltTransaction } = wallet;
@@ -177,10 +190,11 @@ export function OnboardingActionsPage() {
 
   const refreshProfileState = async (syncPayload, fallbackVaultId = null) => {
     const userData = await getUser(address);
+    const mergedUser = mergeUserWithConnectPayload(userData, syncPayload, address);
     const localVaultId = getVaultId(userData);
     const resolvedVaultId = localVaultId ?? getVaultId(syncPayload) ?? fallbackVaultId;
 
-    setUser(localVaultId !== null ? userData : syncPayload);
+    setUser(localVaultId !== null ? mergedUser : mergeUserWithConnectPayload(syncPayload, userData, address));
     const allVaults = await listVaults();
     setVaults(allVaults);
 
@@ -198,9 +212,9 @@ export function OnboardingActionsPage() {
     setBusy(true);
     try {
       setActionStatus('Syncing wallet profile...');
-      await connectWallet(connectedAddress);
-      const userData = await getUser(connectedAddress);
-      setUser(userData);
+      const connectPayload = await connectWallet(connectedAddress);
+      const userData = await getUser(connectedAddress).catch(() => null);
+      setUser(mergeUserWithConnectPayload(userData, connectPayload, connectedAddress));
       const allVaults = await listVaults();
       setVaults(allVaults);
 
@@ -314,6 +328,7 @@ export function OnboardingActionsPage() {
             </button>
           )}
           <span className="vault-inline-text">Wallet: {address || 'not connected'}</span>
+          <span className="vault-inline-text">API key: {user?.api_key || 'N/A'}</span>
         </div>
         {error && <p className="ob-error">{error}</p>}
       </section>

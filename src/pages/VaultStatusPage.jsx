@@ -22,6 +22,19 @@ function formatAddress(address) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
+function extractApiKey(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  return payload.api_key ?? payload.apiKey ?? payload.key ?? null;
+}
+
+function mergeUserWithConnectPayload(userData, connectPayload, walletAddress) {
+  return {
+    ...(userData || {}),
+    wallet_address: userData?.wallet_address || connectPayload?.wallet_address || walletAddress || null,
+    api_key: extractApiKey(userData) || extractApiKey(connectPayload) || null,
+  };
+}
+
 export function VaultStatusPage() {
   const wallet = useWallet();
   const { address } = wallet;
@@ -45,13 +58,14 @@ export function VaultStatusPage() {
       setError('');
 
       try {
-        await connectWallet(address);
-        const userData = await getUser(address);
+        const connectPayload = await connectWallet(address);
+        const userData = await getUser(address).catch(() => null);
         if (cancelled) return;
 
-        setUser(userData);
+        const mergedUser = mergeUserWithConnectPayload(userData, connectPayload, address);
+        setUser(mergedUser);
 
-        const vaultIdentifier = getVaultId(userData);
+        const vaultIdentifier = getVaultId(mergedUser);
         const [bal, statusData, positionData] = await Promise.all([
           getVaultBalances(),
           vaultIdentifier !== null ? getVaultStatus(vaultIdentifier).catch(() => null) : Promise.resolve(null),
@@ -130,6 +144,12 @@ export function VaultStatusPage() {
               <article className="metric-card">
                 <p className="metric-label">Owner fee bps</p>
                 <p className="metric-value">{String(vaultStatus?.owner_fee_bps ?? user?.owner_fee_bps ?? 'N/A')}</p>
+              </article>
+              <article className="metric-card">
+                <p className="metric-label">API Key</p>
+                <p className="metric-value metric-value-small" title={user?.api_key || 'N/A'}>
+                  {user?.api_key || 'N/A'}
+                </p>
               </article>
             </div>
           </section>
